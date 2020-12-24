@@ -257,6 +257,20 @@ Rectangle {
 
             property int lastRequestedEvents: 0
             property var textEditWithSelection
+            property real readMarkerContentPos: originY
+            readonly property real readMarkerViewportPos:
+                readMarkerContentPos < contentY ? 0 :
+                readMarkerContentPos > contentY + height ? height + readMarkerLine.markerWidth() :
+                readMarkerContentPos - contentY
+
+            function parkReadMarker(fromIndex) {
+                readMarkerContentPos = Qt.binding(function() {
+                    return messageModel.readMarkerVisualIndex > indexAt(contentX, contentY)
+                           ? originY : contentY + contentHeight
+                })
+                console.log("Read marker parked at index", fromIndex
+                            + ", content pos", chatView.readMarkerContentPos)
+            }
 
             function ensurePreviousContent() {
                 if (noNeedMoreContent)
@@ -330,6 +344,9 @@ Rectangle {
 
             Component.onCompleted: {
                 console.log("QML view loaded")
+                model.modelAboutToBeReset.connect(function() {
+                    readMarkerContentPos = Qt.binding(function() { return originY })
+                })
                 // FIXME: This is not on the right place: ListView may or
                 // may not have updated his structures according to the new
                 // model by now
@@ -379,6 +396,10 @@ Rectangle {
                     }
             }}
 
+            AnimationBehavior on readMarkerContentPos {
+                NormalNumberAnimation { easing.type: Easing.OutQuad }
+            }
+
             // itemAt is a function rather than a property, so it doesn't
             // produce a QML binding; the piece with contentHeight compensates.
             readonly property var underlayingItem: contentHeight >= height &&
@@ -406,8 +427,39 @@ Rectangle {
                               chatView.underlayingItem.ListView.section : ""
                 }
             }
+            Rectangle {
+                id: readMarkerLine
+
+                function markerWidth() { return 4 }
+
+                anchors.top: parent.top
+                anchors.topMargin: chatView.originY > chatView.contentY
+                                   ? chatView.originY - chatView.contentY : 0
+                anchors.left: parent.left
+                width: parent.width
+                z: -1
+                radius: markerWidth()
+
+                visible: chatView.count > 0
+                /// The bottom of the rectangle is the read marker. If the last
+                /// read item is on the screen, the read marker is at the item's
+                /// bottom; otherwise, it's just beyond the edge of chatView
+                /// in the direction of the read marker index (or the timeline,
+                /// if the timeline is short enough).
+                /// @sa readMarkerViewportPos
+                height: chatView.readMarkerViewportPos - anchors.topMargin
+
+                gradient: Gradient {
+                    GradientStop { position: 1; color: defaultPalette.highlight }
+                    GradientStop {
+                        position: 1 - readMarkerLine.markerWidth() / readMarkerLine.height;
+                        color: mixColors(disabledPalette.base, defaultPalette.highlight, 0.05)
+                    }
+                }
+            }
         }
     }
+
     Slider {
         id: shuttleDial
         orientation: Qt.Vertical
